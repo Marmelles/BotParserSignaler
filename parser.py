@@ -37,7 +37,7 @@ def get_game_info():
     index = 0
     for country, url in countries_urls.items():
         try:
-            if(index > 6):
+            if(index > 2):
                 continue
             # Создаём Конечный УРЛ и отправляем запрос
             urlMain = url + 'MainLiveScore.aspx'
