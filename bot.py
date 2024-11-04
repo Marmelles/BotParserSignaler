@@ -51,6 +51,7 @@ async def game_list(query: types.CallbackQuery):
     await query.message.answer(response_message, reply_markup=inline_keyboard, parse_mode='Markdown')
     #await query.answer()  # Чтобы закрыть индикатор загрузки
 
+
 @dp.callback_query(lambda query: query.data.startswith("mID="))
 async def selectGame(query: types.CallbackQuery):
     mID = query.data .replace('mID=', '')
