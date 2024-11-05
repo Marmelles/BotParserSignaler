@@ -7,7 +7,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, FSInputFil
 
 from DB import add_match_info, initDB, get_record_DB, add_stalk_info
 from parserNew import get_game_info
-from parserSSE import load_page_and_get_players
+from parserSSE import load_page_and_get_players, infinityParsing
 
 API_TOKEN = '7596556749:AAEvIdEDAtAwDipl14EuiVDWbcwk61XYbtY'
 
@@ -86,9 +86,9 @@ async def selectCommand(query: types.CallbackQuery):
         id = promt.replace('Guest=', '')
         team += '2'
 
-
-    commandInfo = load_page_and_get_players(id)
-    commandList = commandInfo[team]
+    dataDB = get_record_DB('gameInfo', id)
+    #print(dataDB['urlCountry'])
+    commandList = load_page_and_get_players(id, dataDB['urlCountry'])[team]
 
     keyboard = []
     for player in commandList:
@@ -104,15 +104,15 @@ async def selectCommand(query: types.CallbackQuery):
     promt = query.data.replace('=selectPlayer=', '')
     mId = promt.split('=')[1]
     pNumber = promt.split('=')[2]
+    dataDB = get_record_DB('gameInfo', mId)
     objAdd = {
         'mID': mId,
         'numberPlayer': pNumber,
         'idUser': query.from_user.id,
+        'urlCountry': dataDB['urlCountry'],
     }
-    start = datetime.now()
-    print(datetime.now())
+
     add_stalk_info(objAdd)
-    print(datetime.now() - start)
     await query.message.answer('Игрок запомнен и теперь отслеживается его уход с  поля', parse_mode='Markdown')
     await query.answer()
 @dp.callback_query()
@@ -120,9 +120,19 @@ async def handle_callback(query: types.CallbackQuery):
     await query.message.answer(f"Неизвестная команда ({query.data})")
     await query.answer()  # Чтобы закрыть индикатор загрузки
 
+# Функция для периодического выполнения
+async def periodic_task():
+    while True:
+        result = infinityParsing()
+        if len(result) > 0:  # Если результат не пустой
+            for data in result:
+                await bot.send_message(data['idUser'], f"Сбежал поганец {data['numberPlayer']} ")
+        await asyncio.sleep(60)  # Пауза в 60 секунд
 async def main():
     try:
         initDB()
+        loop = asyncio.get_event_loop()
+        loop.create_task(periodic_task())
         await set_commands(bot)
         await dp.start_polling(bot)
     except Exception as e:

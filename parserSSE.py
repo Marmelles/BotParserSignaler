@@ -4,6 +4,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 import time
 
+from DB import get_record_DB, get_all_record_DB, del_record_DB
 from Helper import get_element_driver
 
 
@@ -40,7 +41,7 @@ def get_players_in_match(driverRef, team):
 
     return players_in_team
 
-def load_page_and_get_players(mID):
+def load_page_and_get_players(mID, urlCountry):
     # Инициализация браузера с помощью webdriver-manager
     service = Service(ChromeDriverManager().install())
     options = webdriver.ChromeOptions()
@@ -60,7 +61,8 @@ def load_page_and_get_players(mID):
 
     try:
         # Ваш код для загрузки и парсинга страницы
-        driver.get(f"https://hos-web.dataproject.com/LiveScore_adv.aspx?ID={mID}")
+        print(urlCountry)
+        driver.get(f"{urlCountry}/LiveScore_adv.aspx?ID={mID}")
         time.sleep(5)  # настройте время ожидания
 
         team1 = get_players_in_match(driver, 'Home')
@@ -74,5 +76,33 @@ def load_page_and_get_players(mID):
 
     return players_in_match
 
-data = load_page_and_get_players('6578')
-#print(data)
+
+
+
+def infinityParsing():
+    dataDB = get_all_record_DB('stalkPlayerInGame')
+
+    if len(dataDB) == 0:
+        return
+    signalRecord = []
+    for record in dataDB:
+        mID = record['mID']
+        numberPlayer = record['numberPlayer']
+        urlCountry = record['urlCountry']
+
+        commandInfo = load_page_and_get_players(mID, urlCountry)
+        arrayPlayers = commandInfo['team1'] + commandInfo['team2']
+
+        in_game_count = len(list(filter(lambda obj: obj['pType'] == 'inGame', arrayPlayers)))
+        if in_game_count == 0:
+            #continue
+            pass
+
+        has_player = any(filter(lambda obj: obj['pNumber'] == numberPlayer and obj['pType'] == 'inGame', arrayPlayers))
+
+        if has_player == False:
+            del_record_DB('stalkPlayerInGame', mID)
+            signalRecord.append(record)
+
+    return signalRecord
+

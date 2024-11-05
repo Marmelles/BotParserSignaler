@@ -92,8 +92,24 @@ def get_record_DB(table, id):
     conn = sqlite3.connect("Database.db")
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute(f"SELECT * FROM {table} where mID = '{id}'")
+    cursor.execute(f"SELECT * FROM {table}  where mID = '{id}'")
     data = cursor.fetchone()  # Получаем все строки
+
+    return data
+def del_record_DB(table, id):
+    conn = sqlite3.connect("Database.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute(f"delete from {table} where mID = '{id}'")
+    conn.commit()
+    return True
+
+def get_all_record_DB(table):
+    conn = sqlite3.connect("Database.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute(f"SELECT * FROM {table}")
+    data = cursor.fetchall()  # Получаем все строки
 
     return data
 
