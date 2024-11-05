@@ -1,10 +1,13 @@
 import asyncio
-import requests
+from datetime import datetime
+
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, FSInputFile, WebAppInfo
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, FSInputFile
 
-from parser import get_game_info
+from DB import add_match_info, initDB, get_record_DB, add_stalk_info
+from parserNew import get_game_info
+from parserSSE import load_page_and_get_players, infinityParsing
 
 API_TOKEN = '7596556749:AAEvIdEDAtAwDipl14EuiVDWbcwk61XYbtY'
 
@@ -38,33 +41,99 @@ async def start_command(message: types.Message):
 @dp.callback_query(lambda query: query.data == "game_list")
 async def game_list(query: types.CallbackQuery):
     await bot.answer_callback_query(query.id, text="Запрос принят, пожалуйста, подождите...")
-    game_urls = get_game_info()
+    game_list = get_game_info()
 
     keyboard = []
 
-    response_message = "Вот матчи что я нашёл) (Пока ограниченно до 7 матчей)"
-    for country, game_array in game_urls.items():
-        for game_info in game_array:
-            keyboard.append([InlineKeyboardButton(text=f"{game_info['toStr']}", callback_data=f"mID={game_info['mID']}")])
+    response_message = "Вот матчи что я нашёл) (Пока ограниченно до 3 стран)"
+    for id, game_object in game_list.items():
+        recordObj = {
+            'mID': game_object['mID'],
+            'nameCountry': game_object['nameCountry'],
+            'urlCountry': game_object['urlCountry'],
+            'nameTeam1': game_object['team1'],
+            'nameTeam2': game_object['team2'],
+            'idYear': game_object['yearID'],
+        }
+        add_match_info(recordObj)
+        keyboard.append([InlineKeyboardButton(text=f"{game_object['nameCountry']}: {game_object['toStr']}", callback_data=f"=selectGame={id}")])
 
     inline_keyboard = InlineKeyboardMarkup(row_width=2, inline_keyboard=keyboard)
     await query.message.answer(response_message, reply_markup=inline_keyboard, parse_mode='Markdown')
     #await query.answer()  # Чтобы закрыть индикатор загрузки
 
 
-@dp.callback_query(lambda query: query.data.startswith("mID="))
+@dp.callback_query(lambda query: query.data.startswith("=selectGame="))
 async def selectGame(query: types.CallbackQuery):
-    mID = query.data .replace('mID=', '')
-    mID = int(mID)
-    response_message = f'Пока тут пусто, но мы работаем над этим) ({mID})'
-    await query.message.answer(response_message, parse_mode='Markdown')
+    id = query.data.replace('=selectGame=', '')
+    gameInfo = get_record_DB('gameInfo', id)
+    keyboard = []
+    keyboard.append([InlineKeyboardButton(text=f"{gameInfo['nameTeam1']}", callback_data=f"=selectCommand=Home={id}")])
+    keyboard.append([InlineKeyboardButton(text=f"{gameInfo['nameTeam2']}", callback_data=f"=selectCommand=Guest={id}")])
+
+    inline_keyboard = InlineKeyboardMarkup(row_width=2, inline_keyboard=keyboard)
+    response_message = "Выберите команду)"
+    await query.message.answer(response_message, reply_markup=inline_keyboard, parse_mode='Markdown')
+    await query.answer()
+@dp.callback_query(lambda query: query.data.startswith("=selectCommand="))
+async def selectCommand(query: types.CallbackQuery):
+    promt = query.data.replace('=selectCommand=', '')
+    id = 0
+    team = 'team'
+    if(promt.__contains__('Home=')):
+        id = promt.replace('Home=', '')
+        team += '1'
+    else:
+        id = promt.replace('Guest=', '')
+        team += '2'
+
+    dataDB = get_record_DB('gameInfo', id)
+    #print(dataDB['urlCountry'])
+    commandList = load_page_and_get_players(id, dataDB['urlCountry'])[team]
+
+    keyboard = []
+    for player in commandList:
+        keyboard.append([InlineKeyboardButton(text=f"{player['pNumber']} {player['pName']}", callback_data=f"=selectPlayer=mId={id}={player['pNumber']}")])
+
+    inline_keyboard = InlineKeyboardMarkup(row_width=2, inline_keyboard=keyboard)
+    response_message = "Выберите игрока)"
+    await query.message.answer(response_message, reply_markup=inline_keyboard, parse_mode='Markdown')
+    #await query.answer()
+
+@dp.callback_query(lambda query: query.data.startswith("=selectPlayer="))
+async def selectCommand(query: types.CallbackQuery):
+    promt = query.data.replace('=selectPlayer=', '')
+    mId = promt.split('=')[1]
+    pNumber = promt.split('=')[2]
+    dataDB = get_record_DB('gameInfo', mId)
+    objAdd = {
+        'mID': mId,
+        'numberPlayer': pNumber,
+        'idUser': query.from_user.id,
+        'urlCountry': dataDB['urlCountry'],
+    }
+
+    add_stalk_info(objAdd)
+    await query.message.answer('Игрок запомнен и теперь отслеживается его уход с  поля', parse_mode='Markdown')
+    await query.answer()
 @dp.callback_query()
 async def handle_callback(query: types.CallbackQuery):
-    await query.message.answer(f"Неизвестная команда")
+    await query.message.answer(f"Неизвестная команда ({query.data})")
     await query.answer()  # Чтобы закрыть индикатор загрузки
 
+# Функция для периодического выполнения
+async def periodic_task():
+    while True:
+        result = infinityParsing()
+        if len(result) > 0:  # Если результат не пустой
+            for data in result:
+                await bot.send_message(data['idUser'], f"Сбежал поганец {data['numberPlayer']} ")
+        await asyncio.sleep(60)  # Пауза в 60 секунд
 async def main():
     try:
+        initDB()
+        loop = asyncio.get_event_loop()
+        loop.create_task(periodic_task())
         await set_commands(bot)
         await dp.start_polling(bot)
     except Exception as e:
