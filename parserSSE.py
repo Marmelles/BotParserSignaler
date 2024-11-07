@@ -4,7 +4,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 import time
 
-from DB import get_record_DB, get_all_record_DB, del_record_DB
+from DB import get_record_DB, get_all_record_DB, del_record_DB, del_stalk_player, add_playerInfo_DB
 from Helper import get_element_driver
 
 
@@ -21,6 +21,7 @@ def get_players_in_match(driverRef, team):
             'pName': name,
             'pType': type,
             'pNumber': number,
+            'team': team
         }
         players_in_team.append(playerObj)
 
@@ -36,6 +37,7 @@ def get_players_in_match(driverRef, team):
             'pName': name,
             'pType': type,
             'pNumber': number,
+            'team': team
         }
         players_in_team.append(playerObj)
 
@@ -61,12 +63,21 @@ def load_page_and_get_players(mID, urlCountry):
 
     try:
         # Ваш код для загрузки и парсинга страницы
-        print(urlCountry)
+        #print(urlCountry)
         driver.get(f"{urlCountry}/LiveScore_adv.aspx?ID={mID}")
         time.sleep(5)  # настройте время ожидания
 
         team1 = get_players_in_match(driver, 'Home')
         team2 = get_players_in_match(driver, 'Guest')
+
+        for player in team1 + team2:
+            playerInfo = {
+                'mID': mID,
+                'numberPlayer': player['pNumber'],
+                'namePlayer': player['pName'],
+                'teamCom': player['team'],
+            }
+            add_playerInfo_DB(playerInfo)
 
         players_in_match['team1'] = team1
         players_in_match['team2'] = team2
@@ -83,26 +94,38 @@ def infinityParsing():
     dataDB = get_all_record_DB('stalkPlayerInGame')
 
     if len(dataDB) == 0:
-        return
+        return []
     signalRecord = []
+
     for record in dataDB:
         mID = record['mID']
         numberPlayer = record['numberPlayer']
         urlCountry = record['urlCountry']
+        teamCom = record['teamCom']
 
         commandInfo = load_page_and_get_players(mID, urlCountry)
-        arrayPlayers = commandInfo['team1'] + commandInfo['team2']
+        arrayPlayers = []
+
+        if(teamCom == 'Home'):
+            arrayPlayers = commandInfo['team1']
+
+        if(teamCom == 'Guest'):
+            arrayPlayers = commandInfo['team2']
 
         in_game_count = len(list(filter(lambda obj: obj['pType'] == 'inGame', arrayPlayers)))
         if in_game_count == 0:
-            #continue
-            pass
+            continue
+            #pass
 
-        has_player = any(filter(lambda obj: obj['pNumber'] == numberPlayer and obj['pType'] == 'inGame', arrayPlayers))
+        search_player = filter(lambda obj: obj['pNumber'] == numberPlayer and obj['pType'] == 'inGame', arrayPlayers)
+        has_player = any(search_player)
 
         if has_player == False:
-            del_record_DB('stalkPlayerInGame', mID)
-            signalRecord.append(record)
+            playerInfo = next(filter(lambda obj: obj['pNumber'] == numberPlayer, arrayPlayers), {})
+            playerInfo['mID'] = mID
+            playerInfo['idUser'] = record['idUser']
+            del_stalk_player(mID, numberPlayer, record['idUser'], teamCom)
+            #print(playerInfo)
+            signalRecord.append(playerInfo)
 
     return signalRecord
-

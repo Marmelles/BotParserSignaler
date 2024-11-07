@@ -1,8 +1,5 @@
-import requests
 from bs4 import BeautifulSoup
 import requests
-import html
-from urllib.parse import parse_qs
 import re
 
 from Helper import createAdrForMatchPattern, get_param_for_addr, get_text_soup
